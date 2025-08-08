@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ブロック崩し（1枚イラスト分割）</title>
+  <style>
+    html,body{height:100%;margin:0;background:#111;color:#fff;font-family:sans-serif}
+    .wrap{display:flex;flex-direction:column;align-items:center;padding:12px}
+    canvas{background:#222;border:4px solid #333;display:block}
+    .hud{margin-bottom:8px;display:flex;gap:12px;align-items:center}
+    button{padding:6px 10px;border-radius:6px;border:0;background:#2d7;cursor:pointer}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hud">
+      <div>Score: <span id="score">0</span></div>
+      <div>Lives: <span id="lives">3</span></div>
+      <button id="restart">Restart</button>
+    </div>
+    <canvas id="game" width="900" height="800"></canvas>
+  </div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const livesEl = document.getElementById('lives');
+const restartBtn = document.getElementById('restart');
+
+const FRONT_SRC = '1.png';
+const BACK_SRC  = '2.png';
+
+const ROWS = 6;
+const COLS = 4;
+
+const BLOCK_W = 300 / COLS;
+const BLOCK_H = 420 / ROWS;
+const SCALE = 1.2;
+
+const OFFSET_TOP = 40;
+const OFFSET_LEFT = 300;
+const EXTRA_BOTTOM_SPACE = 200;
+
+const PADDLE_W = 140;
+const PADDLE_H = 14;
+
+let frontImg = new Image();
+let backImg = new Image();
+let imagesLoaded = 0;
+frontImg.src = FRONT_SRC;
+backImg.src = BACK_SRC;
+frontImg.onload = backImg.onload = ()=>{ imagesLoaded++; if(imagesLoaded===2) init(); }
+
+let blocks = [];
+let ball = {x: canvas.width/2, y: canvas.height-80, r:8, vx:4, vy:-4};
+let paddle = {x: canvas.width/2 - PADDLE_W/2, y: canvas.height-30, w:PADDLE_W, h:PADDLE_H};
+let score = 0; let lives = 3; let running = false;
+
+let keys = {};
+window.addEventListener('keydown', e=>{ keys[e.key] = true; });
+window.addEventListener('keyup', e=>{ keys[e.key] = false; });
+
+function createBlocks(){
+  blocks = [];
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      const x = OFFSET_LEFT + c*(BLOCK_W*SCALE);
+      const y = OFFSET_TOP + r*(BLOCK_H*SCALE);
+      blocks.push({x,y,w:BLOCK_W*SCALE,h:BLOCK_H*SCALE,reveal:0,hitsRequired:3,row:r,col:c});
+    }
+  }
+}
+
+function resetBall(){
+  ball.x = canvas.width/2; ball.y = canvas.height-80; ball.vx = 4*(Math.random()>0.5?1:-1); ball.vy = -4;
+}
+
+function init(){
+  createBlocks(); resetBall(); score=0; lives=3; running=true; updateHUD(); loop();
+}
+
+function updateHUD(){ scoreEl.textContent = score; livesEl.textContent = lives; }
+
+restartBtn.addEventListener('click', ()=>{ init(); });
+
+function rectCircleColliding(cx,cy,r, rx,ry,rw,rh){
+  const closestX = Math.max(rx, Math.min(cx, rx+rw));
+  const closestY = Math.max(ry, Math.min(cy, ry+rh));
+  const dx = cx-closestX; const dy = cy-closestY;
+  return (dx*dx + dy*dy) <= r*r;
+}
+
+function handleBallCollisions(){
+  if(ball.x - ball.r <= 0){ ball.x = ball.r; ball.vx *= -1; }
+  if(ball.x + ball.r >= canvas.width){ ball.x = canvas.width - ball.r; ball.vx *= -1; }
+  if(ball.y - ball.r <= 0){ ball.y = ball.r; ball.vy *= -1; }
+
+  if(rectCircleColliding(ball.x, ball.y, ball.r, paddle.x, paddle.y, paddle.w, paddle.h)){
+    ball.y = paddle.y - ball.r - 1;
+    ball.vy *= -1;
+    const hitPos = (ball.x - (paddle.x + paddle.w/2)) / (paddle.w/2);
+    ball.vx += hitPos * 2;
+  }
+
+  for(let b of blocks){
+    if(b.removed) continue;
+    if(rectCircleColliding(ball.x, ball.y, ball.r, b.x, b.y, b.w, b.h)){
+      const prevY = ball.y - ball.vy;
+      if(prevY < b.y || prevY > b.y + b.h) {
+        ball.vy *= -1;
+      } else {
+        ball.vx *= -1;
+      }
+      b.reveal += 1/b.hitsRequired;
+      if(b.reveal >= 1){ b.removed = true; score += 10; }
+      updateHUD();
+      break;
+    }
+  }
+}
+
+function update(){
+  if(!running) return;
+
+  if(keys['ArrowLeft']) paddle.x -= 6;
+  if(keys['ArrowRight']) paddle.x += 6;
+  if(paddle.x<0) paddle.x=0;
+  if(paddle.x+paddle.w>canvas.width) paddle.x = canvas.width - paddle.w;
+
+  ball.x += ball.vx; ball.y += ball.vy;
+  handleBallCollisions();
+  if(ball.y - ball.r > canvas.height){
+    lives--; updateHUD();
+    if(lives <= 0){ running = false; return; }
+    resetBall();
+  }
+  if(blocks.every(b=>b.removed)) running = false;
+}
+
+function drawBlock(b){
+  const sx = b.col * BLOCK_W;
+  const sy = b.row * BLOCK_H;
+  ctx.drawImage(backImg, sx, sy, BLOCK_W, BLOCK_H, b.x, b.y, b.w, b.h);
+  if(!b.removed){
+    const alpha = Math.max(0, 1 - b.reveal);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(frontImg, sx, sy, BLOCK_W, BLOCK_H, b.x, b.y, b.w, b.h);
+    ctx.restore();
+  }
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  for(const b of blocks) drawBlock(b);
+  ctx.fillStyle = '#ddd'; ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
+  ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2); ctx.fillStyle = '#ffd'; ctx.fill();
+  if(!running){
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = '#fff'; ctx.font = '28px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Click Restart to play', canvas.width/2, canvas.height/2 - 8);
+    ctx.fillText('Score: '+score, canvas.width/2, canvas.height/2 + 30);
+  }
+}
+
+function loop(){ update(); draw(); requestAnimationFrame(loop); }
+</script>
+</body>
+</html>
