@@ -5,21 +5,22 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>ブロック崩し（1枚イラスト分割）</title>
   <style>
-    html,body{height:100%;margin:0;background:#111;color:#fff;font-family:sans-serif}
-    .wrap{display:flex;flex-direction:column;align-items:center;padding:12px}
+    html,body{height:100%;margin:0;background:#111;color:#fff;font-family:sans-serif;overflow:hidden}
+    .wrap{display:flex;align-items:flex-start;justify-content:center;padding:12px;height:100vh}
     canvas{background:#222;border:4px solid #333;display:block}
-    .hud{margin-bottom:8px;display:flex;gap:12px;align-items:center}
-    button{padding:6px 10px;border-radius:6px;border:0;background:#2d7;cursor:pointer}
+    .hud{margin-left:20px;display:flex;flex-direction:column;gap:12px;min-width:120px}
+    .hud-item{font-size:16px;font-weight:bold}
+    button{padding:8px 12px;border-radius:6px;border:0;background:#2d7;cursor:pointer;font-size:14px}
   </style>
 </head>
 <body>
   <div class="wrap">
+    <canvas id="game" width="900" height="950"></canvas>
     <div class="hud">
-      <div>Score: <span id="score">0</span></div>
-      <div>Lives: <span id="lives">3</span></div>
+      <div class="hud-item">Score: <span id="score">0</span></div>
+      <div class="hud-item">Lives: <span id="lives">3</span></div>
       <button id="restart">Restart</button>
     </div>
-    <canvas id="game" width="900" height="800"></canvas>
   </div>
 
 <script>
@@ -35,12 +36,16 @@ const BACK_SRC  = '2.png';
 const ROWS = 6;
 const COLS = 4;
 
-const BLOCK_W = 300 / COLS;
-const BLOCK_H = 420 / ROWS;
-const SCALE = 1.2;
+// 896×1152の画像サイズに対応
+const IMAGE_W = 896;
+const IMAGE_H = 1152;
 
-const OFFSET_TOP = 40;
-const OFFSET_LEFT = 300;
+const BLOCK_W = IMAGE_W / COLS;  // 224
+const BLOCK_H = IMAGE_H / ROWS;  // 192
+const SCALE = 0.8;  // 画面に収まるようにスケール調整
+
+const OFFSET_TOP = 10;
+const OFFSET_LEFT = (canvas.width - (BLOCK_W * SCALE * COLS)) / 2;  // 中央配置
 const EXTRA_BOTTOM_SPACE = 200;
 
 const PADDLE_W = 140;
@@ -54,8 +59,8 @@ backImg.src = BACK_SRC;
 frontImg.onload = backImg.onload = ()=>{ imagesLoaded++; if(imagesLoaded===2) init(); }
 
 let blocks = [];
-let ball = {x: canvas.width/2, y: canvas.height-80, r:8, vx:4, vy:-4};
-let paddle = {x: canvas.width/2 - PADDLE_W/2, y: canvas.height-30, w:PADDLE_W, h:PADDLE_H};
+let ball = {x: canvas.width/2, y: canvas.height-100, r:8, vx:4, vy:-4};
+let paddle = {x: canvas.width/2 - PADDLE_W/2, y: canvas.height-50, w:PADDLE_W, h:PADDLE_H};
 let score = 0; let lives = 3; let running = false;
 
 let keys = {};
@@ -68,13 +73,13 @@ function createBlocks(){
     for(let c=0;c<COLS;c++){
       const x = OFFSET_LEFT + c*(BLOCK_W*SCALE);
       const y = OFFSET_TOP + r*(BLOCK_H*SCALE);
-      blocks.push({x,y,w:BLOCK_W*SCALE,h:BLOCK_H*SCALE,reveal:0,hitsRequired:3,row:r,col:c});
+      blocks.push({x,y,w:BLOCK_W*SCALE,h:BLOCK_H*SCALE,reveal:0,hitsRequired:1,row:r,col:c});
     }
   }
 }
 
 function resetBall(){
-  ball.x = canvas.width/2; ball.y = canvas.height-80; ball.vx = 4*(Math.random()>0.5?1:-1); ball.vy = -4;
+  ball.x = canvas.width/2; ball.y = canvas.height-100; ball.vx = 4*(Math.random()>0.5?1:-1); ball.vy = -4;
 }
 
 function init(){
