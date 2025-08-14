@@ -6,9 +6,9 @@
   <title>ブロック崩し（1枚イラスト分割）</title>
   <style>
     html,body{height:100%;margin:0;background:#111;color:#fff;font-family:sans-serif;overflow:hidden}
-    .wrap{display:flex;align-items:flex-start;justify-content:center;padding:12px;height:100vh}
-    canvas{background:#222;border:4px solid #333;display:block}
-    .hud{margin-left:20px;display:flex;flex-direction:column;gap:12px;min-width:120px}
+    .wrap{display:flex;align-items:flex-start;justify-content:center;padding:8px;height:100vh;box-sizing:border-box}
+    canvas{background:#222;border:4px solid #333;display:block;max-width:calc(100vw - 180px);max-height:calc(100vh - 20px)}
+    .hud{margin-left:15px;display:flex;flex-direction:column;gap:12px;min-width:120px}
     .hud-item{font-size:16px;font-weight:bold}
     button{padding:8px 12px;border-radius:6px;border:0;background:#2d7;cursor:pointer;font-size:14px}
   </style>
@@ -36,17 +36,24 @@ const BACK_SRC  = '2.png';
 const ROWS = 6;
 const COLS = 4;
 
-// 896×1152の画像サイズに対応
-const IMAGE_W = 896;
-const IMAGE_H = 1152;
+// 元画像サイズ: 896×1152
+const ORIGINAL_IMAGE_W = 896;
+const ORIGINAL_IMAGE_H = 1152;
 
-const BLOCK_W = IMAGE_W / COLS;  // 224
-const BLOCK_H = IMAGE_H / ROWS;  // 192
-const SCALE = 0.8;  // 画面に収まるようにスケール調整
+// 表示サイズを計算（1:1比率で縮小）
+const DISPLAY_SCALE = 0.7; // 表示用のスケール調整
+const DISPLAY_IMAGE_W = ORIGINAL_IMAGE_W * DISPLAY_SCALE;
+const DISPLAY_IMAGE_H = ORIGINAL_IMAGE_H * DISPLAY_SCALE;
+
+const BLOCK_W = DISPLAY_IMAGE_W / COLS;  // 表示用ブロック幅
+const BLOCK_H = DISPLAY_IMAGE_H / ROWS;  // 表示用ブロック高さ
+
+// 元画像での各ブロックのサイズ（drawImage用）
+const ORIGINAL_BLOCK_W = ORIGINAL_IMAGE_W / COLS;  // 224
+const ORIGINAL_BLOCK_H = ORIGINAL_IMAGE_H / ROWS;  // 192
 
 const OFFSET_TOP = 10;
-const OFFSET_LEFT = (canvas.width - (BLOCK_W * SCALE * COLS)) / 2;  // 中央配置
-const EXTRA_BOTTOM_SPACE = 200;
+const OFFSET_LEFT = (canvas.width - DISPLAY_IMAGE_W) / 2;  // 中央配置
 
 const PADDLE_W = 140;
 const PADDLE_H = 14;
@@ -71,9 +78,9 @@ function createBlocks(){
   blocks = [];
   for(let r=0;r<ROWS;r++){
     for(let c=0;c<COLS;c++){
-      const x = OFFSET_LEFT + c*(BLOCK_W*SCALE);
-      const y = OFFSET_TOP + r*(BLOCK_H*SCALE);
-      blocks.push({x,y,w:BLOCK_W*SCALE,h:BLOCK_H*SCALE,reveal:0,hitsRequired:1,row:r,col:c});
+      const x = OFFSET_LEFT + c*BLOCK_W;
+      const y = OFFSET_TOP + r*BLOCK_H;
+      blocks.push({x,y,w:BLOCK_W,h:BLOCK_H,reveal:0,hitsRequired:1,row:r,col:c});
     }
   }
 }
@@ -145,14 +152,19 @@ function update(){
 }
 
 function drawBlock(b){
-  const sx = b.col * BLOCK_W;
-  const sy = b.row * BLOCK_H;
-  ctx.drawImage(backImg, sx, sy, BLOCK_W, BLOCK_H, b.x, b.y, b.w, b.h);
+  // 元画像での切り取り位置とサイズ
+  const sx = b.col * ORIGINAL_BLOCK_W;
+  const sy = b.row * ORIGINAL_BLOCK_H;
+  
+  // 背景画像を描画
+  ctx.drawImage(backImg, sx, sy, ORIGINAL_BLOCK_W, ORIGINAL_BLOCK_H, b.x, b.y, b.w, b.h);
+  
+  // フロント画像を描画（透明度で消去効果を演出）
   if(!b.removed){
     const alpha = Math.max(0, 1 - b.reveal);
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.drawImage(frontImg, sx, sy, BLOCK_W, BLOCK_H, b.x, b.y, b.w, b.h);
+    ctx.drawImage(frontImg, sx, sy, ORIGINAL_BLOCK_W, ORIGINAL_BLOCK_H, b.x, b.y, b.w, b.h);
     ctx.restore();
   }
 }
