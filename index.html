@@ -11,6 +11,8 @@
     .hud{margin-left:15px;display:flex;flex-direction:column;gap:12px;min-width:120px}
     .hud-item{font-size:16px;font-weight:bold}
     button{padding:8px 12px;border-radius:6px;border:0;background:#2d7;cursor:pointer;font-size:14px}
+    .bonus-controls{margin-top:10px}
+    .bonus-controls button{margin:2px 0;display:block;width:100%}
   </style>
 </head>
 <body>
@@ -20,6 +22,14 @@
       <div class="hud-item">Score: <span id="score">0</span></div>
       <div class="hud-item">Lives: <span id="lives">3</span></div>
       <button id="restart">Restart</button>
+      <div class="bonus-controls" id="bonusControls" style="display:none;">
+        <div class="hud-item" style="font-size:14px;">Bonus Images</div>
+        <button id="prevBonus">← Previous</button>
+        <button id="nextBonus">Next →</button>
+        <div class="hud-item" style="font-size:12px;">
+          <span id="bonusCounter">1/10</span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -29,9 +39,14 @@ const ctx = canvas.getContext('2d');
 const scoreEl = document.getElementById('score');
 const livesEl = document.getElementById('lives');
 const restartBtn = document.getElementById('restart');
+const bonusControlsEl = document.getElementById('bonusControls');
+const prevBonusBtn = document.getElementById('prevBonus');
+const nextBonusBtn = document.getElementById('nextBonus');
+const bonusCounterEl = document.getElementById('bonusCounter');
 
-const FRONT_SRC = '1.png';
-const BACK_SRC  = '2.png';
+const LAYER1_SRC = '1.png';
+const LAYER2_SRC = '2.png';
+const BACK_SRC   = '3.png';
 
 const ROWS = 6;
 const COLS = 4;
@@ -55,24 +70,69 @@ const ORIGINAL_BLOCK_H = ORIGINAL_IMAGE_H / ROWS;  // 192
 const OFFSET_TOP = 10;
 const OFFSET_LEFT = (canvas.width - DISPLAY_IMAGE_W) / 2;  // 中央配置
 
-const PADDLE_W = 140;
+const PADDLE_W = 210;
 const PADDLE_H = 14;
 
-let frontImg = new Image();
+let layer1Img = new Image();
+let layer2Img = new Image();
 let backImg = new Image();
+let bonusImages = [];
 let imagesLoaded = 0;
-frontImg.src = FRONT_SRC;
+let bonusImagesLoaded = 0;
+
+// おまけ画像の読み込み
+for(let i = 1; i <= 10; i++){
+  const img = new Image();
+  img.src = `omake${i}.png`;
+  img.onload = () => {
+    bonusImagesLoaded++;
+  };
+  img.onerror = () => {
+    bonusImagesLoaded++; // エラーでもカウントを進める
+  };
+  bonusImages.push(img);
+}
+
+layer1Img.src = LAYER1_SRC;
+layer2Img.src = LAYER2_SRC;
 backImg.src = BACK_SRC;
-frontImg.onload = backImg.onload = ()=>{ imagesLoaded++; if(imagesLoaded===2) init(); }
+layer1Img.onload = layer2Img.onload = backImg.onload = ()=>{ 
+  imagesLoaded++; 
+  if(imagesLoaded===3) init(); 
+}
 
 let blocks = [];
 let ball = {x: canvas.width/2, y: canvas.height-100, r:8, vx:4, vy:-4};
 let paddle = {x: canvas.width/2 - PADDLE_W/2, y: canvas.height-50, w:PADDLE_W, h:PADDLE_H};
-let score = 0; let lives = 3; let running = false;
+let score = 0; 
+let lives = 10; 
+let running = false;
+let gameCleared = false;
+let bonusMode = false;
+let currentBonusIndex = 0;
 
 let keys = {};
 window.addEventListener('keydown', e=>{ keys[e.key] = true; });
 window.addEventListener('keyup', e=>{ keys[e.key] = false; });
+
+// おまけ画像のボタンイベント
+prevBonusBtn.addEventListener('click', () => {
+  if(currentBonusIndex > 0) {
+    currentBonusIndex--;
+    updateBonusCounter();
+  }
+});
+
+nextBonusBtn.addEventListener('click', () => {
+  if(currentBonusIndex < bonusImages.length - 1) {
+    currentBonusIndex++;
+    updateBonusCounter();
+  }
+});
+
+function updateBonusCounter() {
+  bonusCounterEl.textContent = `${currentBonusIndex + 1}/${bonusImages.length}`;
+}
 
 function createBlocks(){
   blocks = [];
@@ -80,20 +140,45 @@ function createBlocks(){
     for(let c=0;c<COLS;c++){
       const x = OFFSET_LEFT + c*BLOCK_W;
       const y = OFFSET_TOP + r*BLOCK_H;
-      blocks.push({x,y,w:BLOCK_W,h:BLOCK_H,reveal:0,hitsRequired:1,row:r,col:c});
+      blocks.push({
+        x, y, w:BLOCK_W, h:BLOCK_H, 
+        layer1Removed: false,  // レイヤー1が削除されたか
+        layer2Removed: false,  // レイヤー2が削除されたか
+        reveal1: 0,           // レイヤー1の削除進度
+        reveal2: 0,           // レイヤー2の削除進度
+        hitsRequired: 1, 
+        row: r, 
+        col: c
+      });
     }
   }
 }
 
 function resetBall(){
-  ball.x = canvas.width/2; ball.y = canvas.height-100; ball.vx = 4*(Math.random()>0.5?1:-1); ball.vy = -4;
+  ball.x = canvas.width/2; 
+  ball.y = canvas.height-100; 
+  ball.vx = 4*(Math.random()>0.5?1:-1); 
+  ball.vy = -4;
 }
 
 function init(){
-  createBlocks(); resetBall(); score=0; lives=3; running=true; updateHUD(); loop();
+  createBlocks(); 
+  resetBall(); 
+  score=0; 
+  lives=10; 
+  running=true; 
+  gameCleared=false;
+  bonusMode=false;
+  currentBonusIndex=0;
+  bonusControlsEl.style.display = 'none';
+  updateHUD(); 
+  loop();
 }
 
-function updateHUD(){ scoreEl.textContent = score; livesEl.textContent = lives; }
+function updateHUD(){ 
+  scoreEl.textContent = score; 
+  livesEl.textContent = lives; 
+}
 
 restartBtn.addEventListener('click', ()=>{ init(); });
 
@@ -117,7 +202,9 @@ function handleBallCollisions(){
   }
 
   for(let b of blocks){
-    if(b.removed) continue;
+    // ブロックが完全にクリア（レイヤー1と2両方削除）されている場合はスキップ
+    if(b.layer1Removed && b.layer2Removed) continue;
+    
     if(rectCircleColliding(ball.x, ball.y, ball.r, b.x, b.y, b.w, b.h)){
       const prevY = ball.y - ball.vy;
       if(prevY < b.y || prevY > b.y + b.h) {
@@ -125,8 +212,24 @@ function handleBallCollisions(){
       } else {
         ball.vx *= -1;
       }
-      b.reveal += 1/b.hitsRequired;
-      if(b.reveal >= 1){ b.removed = true; score += 10; }
+      
+      // まずレイヤー1から削除
+      if(!b.layer1Removed) {
+        b.reveal1 += 1/b.hitsRequired;
+        if(b.reveal1 >= 1) {
+          b.layer1Removed = true;
+          score += 10;
+        }
+      }
+      // レイヤー1が削除されたらレイヤー2を削除
+      else if(!b.layer2Removed) {
+        b.reveal2 += 1/b.hitsRequired;
+        if(b.reveal2 >= 1) {
+          b.layer2Removed = true;
+          score += 10;
+        }
+      }
+      
       updateHUD();
       break;
     }
@@ -134,7 +237,7 @@ function handleBallCollisions(){
 }
 
 function update(){
-  if(!running) return;
+  if(!running || bonusMode) return;
 
   if(keys['ArrowLeft']) paddle.x -= 6;
   if(keys['ArrowRight']) paddle.x += 6;
@@ -148,7 +251,14 @@ function update(){
     if(lives <= 0){ running = false; return; }
     resetBall();
   }
-  if(blocks.every(b=>b.removed)) running = false;
+  // ゲームクリア条件：すべてのブロックでレイヤー1と2が削除されている
+  if(blocks.every(b => b.layer1Removed && b.layer2Removed)) {
+    running = false;
+    gameCleared = true;
+    bonusMode = true;
+    bonusControlsEl.style.display = 'block';
+    updateBonusCounter();
+  }
 }
 
 function drawBlock(b){
@@ -156,29 +266,87 @@ function drawBlock(b){
   const sx = b.col * ORIGINAL_BLOCK_W;
   const sy = b.row * ORIGINAL_BLOCK_H;
   
-  // 背景画像を描画
+  // 背景画像（3.png）を常に描画
   ctx.drawImage(backImg, sx, sy, ORIGINAL_BLOCK_W, ORIGINAL_BLOCK_H, b.x, b.y, b.w, b.h);
   
-  // フロント画像を描画（透明度で消去効果を演出）
-  if(!b.removed){
-    const alpha = Math.max(0, 1 - b.reveal);
+  // レイヤー2（2.png）の描画
+  if(!b.layer2Removed){
+    const alpha2 = Math.max(0, 1 - b.reveal2);
     ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.drawImage(frontImg, sx, sy, ORIGINAL_BLOCK_W, ORIGINAL_BLOCK_H, b.x, b.y, b.w, b.h);
+    ctx.globalAlpha = alpha2;
+    ctx.drawImage(layer2Img, sx, sy, ORIGINAL_BLOCK_W, ORIGINAL_BLOCK_H, b.x, b.y, b.w, b.h);
     ctx.restore();
+  }
+  
+  // レイヤー1（1.png）の描画
+  if(!b.layer1Removed){
+    const alpha1 = Math.max(0, 1 - b.reveal1);
+    ctx.save();
+    ctx.globalAlpha = alpha1;
+    ctx.drawImage(layer1Img, sx, sy, ORIGINAL_BLOCK_W, ORIGINAL_BLOCK_H, b.x, b.y, b.w, b.h);
+    ctx.restore();
+  }
+}
+
+function drawBonusImage(){
+  const bonusImg = bonusImages[currentBonusIndex];
+  if(bonusImg && bonusImg.complete && bonusImg.naturalWidth > 0) {
+    // おまけ画像をキャンバス全体に表示
+    const imgAspect = bonusImg.width / bonusImg.height;
+    const canvasAspect = canvas.width / canvas.height;
+    
+    let drawWidth, drawHeight, drawX, drawY;
+    
+    if(imgAspect > canvasAspect) {
+      // 画像の方が横長
+      drawWidth = canvas.width;
+      drawHeight = canvas.width / imgAspect;
+      drawX = 0;
+      drawY = (canvas.height - drawHeight) / 2;
+    } else {
+      // 画像の方が縦長
+      drawHeight = canvas.height;
+      drawWidth = canvas.height * imgAspect;
+      drawX = (canvas.width - drawWidth) / 2;
+      drawY = 0;
+    }
+    
+    ctx.drawImage(bonusImg, drawX, drawY, drawWidth, drawHeight);
+  } else {
+    // 画像が読み込まれていない場合の表示
+    ctx.fillStyle = '#333';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#fff';
+    ctx.font = '24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`Loading omake${currentBonusIndex + 1}.png...`, canvas.width/2, canvas.height/2);
   }
 }
 
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
+  
+  if(bonusMode) {
+    drawBonusImage();
+    return;
+  }
+  
   for(const b of blocks) drawBlock(b);
   ctx.fillStyle = '#ddd'; ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
   ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2); ctx.fillStyle = '#ffd'; ctx.fill();
-  if(!running){
+  
+  if(!running && !gameCleared){
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0,0,canvas.width,canvas.height);
     ctx.fillStyle = '#fff'; ctx.font = '28px sans-serif'; ctx.textAlign='center';
     ctx.fillText('Click Restart to play', canvas.width/2, canvas.height/2 - 8);
     ctx.fillText('Score: '+score, canvas.width/2, canvas.height/2 + 30);
+  } else if(gameCleared && !bonusMode) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = '#fff'; ctx.font = '28px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Game Cleared!', canvas.width/2, canvas.height/2 - 20);
+    ctx.fillText('Score: '+score, canvas.width/2, canvas.height/2 + 10);
+    ctx.font = '18px sans-serif';
+    ctx.fillText('Bonus images unlocked!', canvas.width/2, canvas.height/2 + 40);
   }
 }
 
